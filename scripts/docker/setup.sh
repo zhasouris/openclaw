@@ -24,6 +24,26 @@ require_cmd() {
   fi
 }
 
+is_windows_posix_shell() {
+  local msystem="${MSYSTEM:-}"
+  case "${OSTYPE:-}" in
+    msys* | cygwin* | win32*) return 0 ;;
+  esac
+  case "$msystem" in
+    MINGW* | MSYS*) return 0 ;;
+  esac
+  return 1
+}
+
+normalize_compose_file_arg() {
+  local path="$1"
+  if is_windows_posix_shell && command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$path" | tr '\\' '/'
+    return 0
+  fi
+  printf '%s' "$path"
+}
+
 run_docker_build() {
   # Dockerfile uses BuildKit-only syntax (RUN --mount=type=cache). Force
   # BuildKit so hosts defaulting to the legacy builder do not fail.
@@ -404,14 +424,14 @@ if [[ -n "$HOME_VOLUME_NAME" || ${#VALID_MOUNTS[@]} -gt 0 ]]; then
   COMPOSE_FILES+=("$EXTRA_COMPOSE_FILE")
 fi
 for compose_file in "${COMPOSE_FILES[@]}"; do
-  COMPOSE_ARGS+=("-f" "$compose_file")
+  COMPOSE_ARGS+=("-f" "$(normalize_compose_file_arg "$compose_file")")
 done
 # Keep a base compose arg set without sandbox overlay so rollback paths can
 # force a known-safe gateway service definition (no docker.sock mount).
 BASE_COMPOSE_ARGS=("${COMPOSE_ARGS[@]}")
 COMPOSE_HINT="docker compose"
 for compose_file in "${COMPOSE_FILES[@]}"; do
-  COMPOSE_HINT+=" -f ${compose_file}"
+  COMPOSE_HINT+=" -f $(normalize_compose_file_arg "$compose_file")"
 done
 
 ENV_FILE="$ROOT_DIR/.env"
